@@ -1,1 +1,2 @@
 add_subdirectory(itkImagePointer)
+add_subdirectory(allTypesConvertToNRRD)

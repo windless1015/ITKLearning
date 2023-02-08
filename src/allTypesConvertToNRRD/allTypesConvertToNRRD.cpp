@@ -31,9 +31,12 @@
 #include "itkMINCImageIOFactory.h"
 #include "itkMetaImageIOFactory.h"
 #include "itkVTKImageToImageFilter.h"
+#include <vtkMetaImageReader.h>
+
+typedef short InputPixelType;
+typedef float OutputPixelType;
 
 //Write binary files to disk, with Number of elements.
-
 void writeToBin(float *Output, int Num_Elements, const std::string FILENAME) {
     std::ofstream OutputStream;
     OutputStream.open(FILENAME, std::ios::app | std::ios::binary);
@@ -61,7 +64,7 @@ int main(int argc, char * argv[])
     std::string path2 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\MainMR_t1_tse_tra.mha";
     std::string pathNrrd = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\fusion\\3D-Scan_1.nrrd";
     //this function is testing the case of converting vtkImageData into nrrd type
-    readNrrdImageAndGenerateNrrd("D:/test.nrrd", "D:/tttttt.nrrd");
+    readNrrdImageAndGenerateNrrd(path1, "D:/tttttt.nrrd");
 
     //this function is testing the case of generating the nrrd file by myself
     int dimensions[3];
@@ -86,7 +89,6 @@ bool writeNRRDFromITKSamples()
 {
     //std::string dirName = "."; // current directory by default
 
-    //using PixelType = float;
     //constexpr unsigned int Dimension = 3;
     //using ImageType = itk::Image<PixelType, Dimension>;
 
@@ -183,21 +185,17 @@ bool writeNRRDFromITKSamples()
 
 bool writeNrrdFromITKWiki(std::string srcFile, std::string outFile)
 {
-    //typedef signed short                      PixelType;
-    typedef float                      PixelType;
-    typedef itk::VectorImage<PixelType, 3>	    DiffusionImageType;
+    typedef itk::VectorImage<InputPixelType, 3>	    DiffusionImageType;
     typedef DiffusionImageType::Pointer				DiffusionImagePointer;
 
 
     typedef itk::ImageFileReader<DiffusionImageType,
-        itk::DefaultConvertPixelTraits< PixelType > > FileReaderType;
+        itk::DefaultConvertPixelTraits<InputPixelType>> FileReaderType;
     FileReaderType::Pointer reader = FileReaderType::New();
     reader->SetFileName(srcFile);
     reader->Update();
 
     itk::NrrdImageIO::Pointer io = itk::NrrdImageIO::New();
-    //io->SetNrrdVectorType(nrrdKindList);
-    //io->set
     io->SetFileType(itk::ImageIOBase::Binary);
 
     typedef itk::ImageFileWriter<DiffusionImageType > WriterType;
@@ -251,8 +249,7 @@ void readInformation(std::string filePath, int* dimensions, float* origins, doub
     itk::MetaImageIOFactory::RegisterOneFactory();
     itk::GDCMImageIOFactory::RegisterOneFactory();
 
-    using PixelType = float;
-    using ImageType = itk::Image<PixelType, 3>;
+    using ImageType = itk::Image<InputPixelType, 3>;
     //1. read the image from local file
     itk::ImageFileReader<ImageType>::Pointer reader = itk::ImageFileReader<ImageType>::New();
     reader->SetFileName(filePath);
@@ -282,7 +279,7 @@ void readInformation(std::string filePath, int* dimensions, float* origins, doub
     try {
         orientationFilter->Update();
 
-        itk::Image<float, 3U>::Pointer volumeImgPtr = orientationFilter->GetOutput();
+        itk::Image<InputPixelType, 3U>::Pointer volumeImgPtr = orientationFilter->GetOutput();
         int bufferSize = volumeImgPtr->GetPixelContainer()->Size();
         dataBuffer.resize(bufferSize);
 
@@ -300,20 +297,30 @@ void readInformation(std::string filePath, int* dimensions, float* origins, doub
 // in some cases, we have the vtkImageData already and we need to generate it into nrrd type
 void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile)
 {
-    vtkSmartPointer<vtkNrrdReader> reader1 = vtkSmartPointer<vtkNrrdReader>::New();
-    if (!reader1->CanReadFile(srcFile.c_str()))
+    /*vtkSmartPointer<vtkNrrdReader> nrrdReader = vtkSmartPointer<vtkNrrdReader>::New();
+    if (!nrrdReader->CanReadFile(srcFile.c_str()))
     {
         std::cerr << "Reader reports " << srcFile << " cannot be read.";
         return;
     }
-    reader1->SetFileName(srcFile.c_str());
-    reader1->Update();
+    nrrdReader->SetFileName(srcFile.c_str());
+    nrrdReader->Update();*/
 
-    using PixelType = float;
-    using ImageType = itk::Image<PixelType, 3>;
-    using FilterType = itk::VTKImageToImageFilter<ImageType>;
-    auto filter = FilterType::New();
-    filter->SetInput(reader1->GetOutput());
+    vtkSmartPointer<vtkMetaImageReader> metaReader = vtkSmartPointer<vtkMetaImageReader>::New();
+    if (!metaReader->CanReadFile(srcFile.c_str()))
+    {
+        std::cerr << "Reader reports " << srcFile << " cannot be read.";
+        return;
+    }
+    metaReader->SetFileName(srcFile.c_str());
+    metaReader->Update();
+
+
+    //1. read volume image with ITK whose InputPixelType is short
+    using InputImageType = itk::Image<InputPixelType, 3>;
+    using VTKToITKFilterType = itk::VTKImageToImageFilter<InputImageType>;
+    auto filter = VTKToITKFilterType::New();
+    filter->SetInput(metaReader->GetOutput());
 
     try
     {
@@ -324,17 +331,30 @@ void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile)
         std::cerr << "Error: " << error << std::endl;
         return;
     }
-    ImageType::ConstPointer itkImage = filter->GetOutput();
+    InputImageType::ConstPointer itkInputImage = filter->GetOutput();
 
+    using  OutputImageType = itk::Image<OutputPixelType, 3>;
 
+    //2. using CastImageFilter to convert InputPixelType to OutputPixelType, short to float
+    using CastFilterType = itk::CastImageFilter<InputImageType, OutputImageType>;
+    CastFilterType::Pointer castFilter = CastFilterType::New();
+    castFilter->SetInput(itkInputImage);
+    try
+    {
+        castFilter->Update();
+    }
+    catch (itk::ExceptionObject e)
+    {
+        std::cout << e << std::endl;
+    }
 
     itk::NrrdImageIO::Pointer io = itk::NrrdImageIO::New();
     io->SetFileType(itk::ImageIOBase::Binary);
 
-    typedef itk::ImageFileWriter<ImageType > WriterType;
+    typedef itk::ImageFileWriter<OutputImageType > WriterType;
     WriterType::Pointer nrrdWriter = WriterType::New();
     nrrdWriter->UseInputMetaDataDictionaryOn();
-    nrrdWriter->SetInput(itkImage);
+    nrrdWriter->SetInput(castFilter->GetOutput());
     nrrdWriter->SetImageIO(io);
     nrrdWriter->SetFileName(outFile);
     try

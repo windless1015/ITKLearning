@@ -395,15 +395,35 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
     typedef itk::Image<float, 3> ImageType;
     typedef itk::ImageFileReader<ImageType> ReaderType;
     typedef itk::ImageFileWriter<ImageType> WriterType;
-    typedef itk::MetaDataObject< std::string > MetaDataStringType;
+    typedef itk::MetaDataObject<std::string> MetaDataStringType;
 
-
-
+    typedef itk::MetaDataObject<std::vector<double>> MetaDataDoubleArrayType;
+    // add the meta tags
+    //add space tag
     MetaDataStringType::Pointer meta = MetaDataStringType::New();
     meta->SetMetaDataObjectValue("scanner-xyz");
-
+    //add the private tag
     MetaDataStringType::Pointer registrationType = MetaDataStringType::New();
     registrationType->SetMetaDataObjectValue("fixed");
+    //add space direction
+    MetaDataDoubleArrayType::Pointer spacingType = MetaDataDoubleArrayType::New();
+    std::vector<double> directions = { 0.5, 0.5, 1,0.5, 0.5, 1,0.5, 0.5, 1 };
+    spacingType->SetMetaDataObjectValue(directions);
+    // directions
+    using MatrixType = itk::Matrix<double, 3, 3>;
+    typedef itk::MetaDataObject<MatrixType> MetaDataMatrixType;
+    MatrixType M;
+    M(0, 0) = 1.0;
+    M(0, 1) = 2.0;
+    M(0, 2) = 3.0;
+    M(1, 0) = 4.0;
+    M(1, 1) = 5.0;
+    M(1, 2) = 6.0;
+    M(2, 0) = 7.0;
+    M(2, 1) = 8.0;
+    M(2, 2) = 9.0;
+    MetaDataMatrixType::Pointer directionsType = MetaDataMatrixType::New();
+    directionsType->SetMetaDataObjectValue(M);
 
 
     ReaderType::Pointer reader = ReaderType::New();
@@ -417,7 +437,8 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
     Dictionary& dic = reader->GetOutput()->GetMetaDataDictionary();
     auto itr = dic.Begin();
     auto end = dic.End();
-    std::string entryId = "NRRD_space";
+    //std::string entryId = "NRRD_space";
+    std::string entryId = "ITK_original_spacing";
     auto tagItr = dic.Find(entryId);
     /*****************************************/
     /***********you can see all the meta data ****/
@@ -432,8 +453,26 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
             std::cout << "patient: " << tagvalue << std::endl;
         }
 
+        MetaDataDoubleArrayType::ConstPointer directionsValue =
+            dynamic_cast<const MetaDataDoubleArrayType*> (tagItr->second.GetPointer());
+        if (directionsValue)
+        {
+            std::vector<double> spacings = directionsValue->GetMetaDataObjectValue();
+            std::cout << "spacings: " << spacings[0] << ", " << spacings[1] << ", " << spacings[2] << std::endl;
+        }
+
         dic.Set("NRRD_space", meta);
-        dic.Set("registration type", registrationType);
+        //dic.Set("registration type", registrationType);
+        dic.Set("ITK_original_spacing", spacingType);
+
+        dic.Set("ITK_original_direction", directionsType);
+        MetaDataDoubleArrayType::ConstPointer directionsValue2 =
+            dynamic_cast<const MetaDataDoubleArrayType*> (tagItr->second.GetPointer());
+        if (directionsValue2)
+        {
+            std::vector<double> spacings = directionsValue2->GetMetaDataObjectValue();
+            std::cout << "spacings: " << spacings[0] << ", " << spacings[1] << ", " << spacings[2] << std::endl;
+        }
     }
 
 

@@ -31,6 +31,7 @@
 #include "itkMINCImageIOFactory.h"
 #include "itkMetaImageIOFactory.h"
 #include "itkVTKImageToImageFilter.h"
+#include "itkMetaDataDictionary.h"
 #include <vtkMetaImageReader.h>
 
 typedef short InputPixelType;
@@ -56,7 +57,7 @@ void readInformation(std::string filePath, int* dimensions, float* origins, doub
 bool writeNrrdFromITKWiki(std::string, std::string);
 void writeBySelf(std::string outputPath, int* dimensions, float* origins, double* directions, double* spacing, std::vector<float>& buffer);
 void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile);
-
+void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile);
 int main(int argc, char * argv[])
 {
     //mha
@@ -64,7 +65,8 @@ int main(int argc, char * argv[])
     std::string path2 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\MainMR_t1_tse_tra.mha";
     std::string pathNrrd = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\fusion\\3D-Scan_1.nrrd";
     //this function is testing the case of converting vtkImageData into nrrd type
-    readNrrdImageAndGenerateNrrd(path1, "D:/tttttt.nrrd");
+    //readNrrdImageAndGenerateNrrd(path1, "D:/tttttt.nrrd");
+    addMetaTagsToNRRDFile("D:/tttttt.nrrd", "D:/tttmodified.nrrd");
 
     //this function is testing the case of generating the nrrd file by myself
     int dimensions[3];
@@ -351,11 +353,25 @@ void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile)
     itk::NrrdImageIO::Pointer io = itk::NrrdImageIO::New();
     io->SetFileType(itk::ImageIOBase::Binary);
 
+    //set the nrrd meta data: space and space direction
+    typedef itk::MetaDataDictionary DictionaryType;
+    DictionaryType& dictionary = io->GetMetaDataDictionary();
+    using MetaDataStringType = itk::MetaDataObject<std::string>;
+    MetaDataStringType::Pointer spaceMeta = MetaDataStringType::New();
+    spaceMeta->SetMetaDataObjectValue("scanner-xyz");
+    MetaDataStringType::Pointer spaceMetaDirection = MetaDataStringType::New();
+    spaceMetaDirection->SetMetaDataObjectValue("(0.25,0,0) (0,0.25,0) (0,0,1)");
+    dictionary.Set("space", spaceMeta);
+    dictionary.Set("space directions", spaceMetaDirection);
+    
+
+
     typedef itk::ImageFileWriter<OutputImageType > WriterType;
     WriterType::Pointer nrrdWriter = WriterType::New();
     nrrdWriter->UseInputMetaDataDictionaryOn();
     nrrdWriter->SetInput(castFilter->GetOutput());
     nrrdWriter->SetImageIO(io);
+    nrrdWriter->SetMetaDataDictionary(dictionary);
     nrrdWriter->SetFileName(outFile);
     try
     {
@@ -365,5 +381,85 @@ void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile)
     {
         std::cout << e << std::endl;
     }
+
+}
+
+
+void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
+{
+    ///////////////////////////////////////////////////////////////////////////////
+    //if i don't put this line of code, it will report no registory for this kind type of file
+    ///////////////////////////////////////////////////////////////////////////////
+    itk::NrrdImageIOFactory::RegisterOneFactory();
+
+    typedef itk::Image<float, 3> ImageType;
+    typedef itk::ImageFileReader<ImageType> ReaderType;
+    typedef itk::ImageFileWriter<ImageType> WriterType;
+    typedef itk::MetaDataObject< std::string > MetaDataStringType;
+
+
+
+    MetaDataStringType::Pointer meta = MetaDataStringType::New();
+    meta->SetMetaDataObjectValue("scanner-xyz");
+
+    MetaDataStringType::Pointer registrationType = MetaDataStringType::New();
+    registrationType->SetMetaDataObjectValue("fixed");
+
+
+    ReaderType::Pointer reader = ReaderType::New();
+    WriterType::Pointer writer = WriterType::New();
+    reader->SetFileName(srcFile);
+    reader->Update();
+
+
+    using Dictionary = itk::MetaDataDictionary;
+    using MetaDataStringType = itk::MetaDataObject<std::string>;
+    Dictionary& dic = reader->GetOutput()->GetMetaDataDictionary();
+    auto itr = dic.Begin();
+    auto end = dic.End();
+    std::string entryId = "NRRD_space";
+    auto tagItr = dic.Find(entryId);
+    /*****************************************/
+    /***********you can see all the meta data ****/
+    /***********************************************/
+    if (tagItr != end)
+    {
+        MetaDataStringType::ConstPointer entryvalue =
+            dynamic_cast<const MetaDataStringType*> (tagItr->second.GetPointer());
+        if (entryvalue)
+        {
+            std::string tagvalue = entryvalue->GetMetaDataObjectValue();
+            std::cout << "patient: " << tagvalue << std::endl;
+        }
+
+        dic.Set("NRRD_space", meta);
+        dic.Set("registration type", registrationType);
+    }
+
+
+    writer->SetFileName(outFile);
+    writer->SetInput(reader->GetOutput());
+    writer->Update();
+
+    //this snippet of codes generate the nrrd file like this:
+    /*
+    NRRD0004
+    # Complete NRRD file format specification at:
+    # http://teem.sourceforge.net/nrrd/format.html
+    type: float
+    dimension: 3
+    space: left-posterior-superior   //in itk, this space tag actually is NRRD_space
+    sizes: 538 270 70
+    space directions: (0.25,0,0) (0,0.25,0) (0,0,1)
+    kinds: domain domain domain
+    endian: little
+    encoding: raw
+    space origin: (67.233900000000006,67.490700000000004,0)
+    ITK_InputFilterName:=NrrdImageIO
+    ITK_original_direction:=
+    ITK_original_spacing:=
+    space:=scanner-xyz
+    */
+    // the tag is built like that, i don't think it generate the 
 
 }

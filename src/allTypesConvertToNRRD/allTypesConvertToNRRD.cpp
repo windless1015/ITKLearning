@@ -56,6 +56,7 @@ void readInformation(std::string filePath, int* dimensions, float* origins, doub
 
 bool writeNrrdFromITKWiki(std::string, std::string);
 void writeBySelf(std::string outputPath, int* dimensions, float* origins, double* directions, double* spacing, std::vector<float>& buffer);
+void writeNrrdFileTest(std::string, std::string);
 void readNrrdImageAndGenerateNrrd(std::string srcFile, std::string outFile);
 void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile);
 int main(int argc, char * argv[])
@@ -64,9 +65,12 @@ int main(int argc, char * argv[])
     std::string path1 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\3D-USScan_1.mha";
     std::string path2 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\MainMR_t1_tse_tra.mha";
     std::string pathNrrd = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\fusion\\3D-Scan_1.nrrd";
+
+    writeNrrdFileTest(path1, "D:/aaaa.nrrd");
+
     //this function is testing the case of converting vtkImageData into nrrd type
     //readNrrdImageAndGenerateNrrd(path1, "D:/tttttt.nrrd");
-    addMetaTagsToNRRDFile("D:/tttttt.nrrd", "D:/tttmodified.nrrd");
+    //addMetaTagsToNRRDFile("D:/tttttt.nrrd", "D:/tttmodified.nrrd");
 
     //this function is testing the case of generating the nrrd file by myself
     int dimensions[3];
@@ -218,7 +222,92 @@ bool writeNrrdFromITKWiki(std::string srcFile, std::string outFile)
     return 0;
 }
 
+void writeNrrdFileTest(std::string srcFile, std::string outFile)
+{
+    double directions[9] = { 0.25, 0, 0, 0, 0.25, 0, 0, 0, 1 };
 
+    itk::NrrdImageIOFactory::RegisterOneFactory();
+    itk::MetaImageIOFactory::RegisterOneFactory();
+
+    ////////////////////////////////read meta image////////////////////
+    vtkSmartPointer<vtkMetaImageReader> metaReader = vtkSmartPointer<vtkMetaImageReader>::New();
+    if (!metaReader->CanReadFile(srcFile.c_str()))
+    {
+        std::cerr << "Reader reports " << srcFile << " cannot be read.";
+        return;
+    }
+    metaReader->SetFileName(srcFile.c_str());
+    metaReader->Update();
+
+    vtkImageData* vtkImageDataPtr = metaReader->GetOutput();
+
+    ///////////////////////convert vtk image to itk image, and cast data type to float//////////////
+    using InputImageType = itk::Image<InputPixelType, 3>;
+    using VTKToITKFilterType = itk::VTKImageToImageFilter<InputImageType>;
+    auto filter = VTKToITKFilterType::New();
+    filter->SetInput(vtkImageDataPtr);
+    try
+    {
+        filter->Update();
+    }
+    catch (const itk::ExceptionObject & error)
+    {
+        return;
+    }
+    int totalSize = vtkImageDataPtr->GetDimensions()[0] * vtkImageDataPtr->GetDimensions()[1] * vtkImageDataPtr->GetDimensions()[2];
+    itk::Image<InputPixelType, 3U>::Pointer volumeImgPtr = filter->GetOutput();
+    short* itkImageDataPointer = volumeImgPtr->GetPixelContainer()->GetBufferPointer();
+
+    using OutputImageType = itk::Image<float, 3>;
+    using CastFilterType = itk::CastImageFilter<InputImageType, OutputImageType>;
+    CastFilterType::Pointer castFilter = CastFilterType::New();
+    castFilter->SetInput(volumeImgPtr);
+    try
+    {
+        castFilter->Update();
+    }
+    catch (itk::ExceptionObject e)
+    {
+        std::cout << e << std::endl;
+    }
+    itk::Image<float, 3U>::Pointer floatTypeITKImage = castFilter->GetOutput();
+    float* floatTypeITKImageData = floatTypeITKImage->GetPixelContainer()->GetBufferPointer();
+    int itkImageDataSize = volumeImgPtr->GetPixelContainer()->Size();
+    assert(itkImageDataSize == totalSize);
+
+    ///////////////////////generate the nrrd file/////////////////////
+    std::ofstream nrrdHeader;
+    nrrdHeader.open(outFile, std::ofstream::out);
+    nrrdHeader << "NRRD0004" << std::endl;
+    nrrdHeader << "type: float" << std::endl;
+    nrrdHeader << "dimension: 3" << std::endl;
+    nrrdHeader << "space: scanner-xyz" << std::endl;
+    nrrdHeader << "sizes: " << vtkImageDataPtr->GetDimensions()[0] << " " << vtkImageDataPtr->GetDimensions()[1] << " " << vtkImageDataPtr->GetDimensions()[2] << std::endl;
+
+    //construct space directions with the format: (a,b,c) (d, e, f) (g, h, i)
+    std::string spaceDirectionsString = "";
+    for (int i = 0; i < 3; i++)
+    {
+        spaceDirectionsString += "(" + std::to_string(directions[i * 3]) + "," + std::to_string(directions[1 + i * 3]) + "," + std::to_string(directions[2 + i * 3]) + ")";
+        spaceDirectionsString += " ";
+    }
+
+    nrrdHeader << "space directions: " << spaceDirectionsString << std::endl;
+    nrrdHeader << "kinds: domain domain domain" << std::endl;
+    nrrdHeader << "endian: little" << std::endl;
+    nrrdHeader << "encoding: raw" << std::endl;
+    nrrdHeader << "space origin: (" << vtkImageDataPtr->GetOrigin()[0] << "," << vtkImageDataPtr->GetOrigin()[1] << "," << vtkImageDataPtr->GetOrigin()[2] << ")" << std::endl << std::endl;
+    nrrdHeader.close();
+
+    // append writing the binary data of itk image
+    std::ofstream binaryStream;
+    binaryStream.open(outFile, std::ios::app | std::ios::binary);
+    if (!binaryStream.good()) {
+        return;
+    }
+    binaryStream.write(reinterpret_cast<char*>(floatTypeITKImageData), sizeof(float) * totalSize);
+    binaryStream.close();
+}
 
 void writeBySelf(std::string outputPath, int* dimensions, float* origins, double* directions, double* spacing, std::vector<float>& buffer)
 {

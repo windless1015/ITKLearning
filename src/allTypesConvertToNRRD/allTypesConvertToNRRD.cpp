@@ -65,12 +65,14 @@ int main(int argc, char * argv[])
     std::string path1 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\3D-USScan_1.mha";
     std::string path2 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\MainMR_t1_tse_tra.mha";
     std::string pathNrrd = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\fusion\\3D-Scan_1.nrrd";
-
-    writeNrrdFileTest(path1, "D:/aaaa.nrrd");
+    std::string path4 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\fusion\\Scan_1.nrrd";
+    std::string path5 = "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\volume_datasets\\MainMR_t2_tse_fs_tra.mha";
+    writeNrrdFileTest(path5, "D:\\Ultrast\\Patients\\RD_UT20220316143157\\appt_1\\fusion\\MR_t2_tse_fs_tra_origin.nrrd");
 
     //this function is testing the case of converting vtkImageData into nrrd type
     //readNrrdImageAndGenerateNrrd(path1, "D:/tttttt.nrrd");
-    //addMetaTagsToNRRDFile("D:/tttttt.nrrd", "D:/tttmodified.nrrd");
+    //addMetaTagsToNRRDFile("D:/robot_scan_11-08-31_13-02-2023.nrrd", "D:/tttmodified.nrrd");
+    writeNrrdFromITKWiki("D:/robot_scan_11-08-31_13-02-2023.nrrd", "D:/bbb.nrrd");
 
     //this function is testing the case of generating the nrrd file by myself
     int dimensions[3];
@@ -224,13 +226,14 @@ bool writeNrrdFromITKWiki(std::string srcFile, std::string outFile)
 
 void writeNrrdFileTest(std::string srcFile, std::string outFile)
 {
-    double directions[9] = { 0.25, 0, 0, 0, 0.25, 0, 0, 0, 1 };
 
     itk::NrrdImageIOFactory::RegisterOneFactory();
     itk::MetaImageIOFactory::RegisterOneFactory();
 
     ////////////////////////////////read meta image////////////////////
     vtkSmartPointer<vtkMetaImageReader> metaReader = vtkSmartPointer<vtkMetaImageReader>::New();
+    //vtkSmartPointer<vtkNrrdReader> metaReader = vtkSmartPointer<vtkNrrdReader>::New();
+    if (!metaReader->CanReadFile(srcFile.c_str()))
     if (!metaReader->CanReadFile(srcFile.c_str()))
     {
         std::cerr << "Reader reports " << srcFile << " cannot be read.";
@@ -283,6 +286,9 @@ void writeNrrdFileTest(std::string srcFile, std::string outFile)
     nrrdHeader << "dimension: 3" << std::endl;
     nrrdHeader << "space: scanner-xyz" << std::endl;
     nrrdHeader << "sizes: " << vtkImageDataPtr->GetDimensions()[0] << " " << vtkImageDataPtr->GetDimensions()[1] << " " << vtkImageDataPtr->GetDimensions()[2] << std::endl;
+    
+    //float directions[9] = { 0.25, 0, 0, 0, 0.25, 0, 0, 0, 1 };
+    double directions[9] = { vtkImageDataPtr->GetSpacing()[0],0,0,0,vtkImageDataPtr->GetSpacing()[1], 0, 0, 0, vtkImageDataPtr->GetSpacing()[2] };
 
     //construct space directions with the format: (a,b,c) (d, e, f) (g, h, i)
     std::string spaceDirectionsString = "";
@@ -492,27 +498,27 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
     MetaDataStringType::Pointer meta = MetaDataStringType::New();
     meta->SetMetaDataObjectValue("scanner-xyz");
     //add the private tag
-    MetaDataStringType::Pointer registrationType = MetaDataStringType::New();
-    registrationType->SetMetaDataObjectValue("fixed");
+    //MetaDataStringType::Pointer registrationType = MetaDataStringType::New();
+    //registrationType->SetMetaDataObjectValue("fixed");
     //add space direction
-    MetaDataDoubleArrayType::Pointer spacingType = MetaDataDoubleArrayType::New();
-    std::vector<double> directions = { 0.5, 0.5, 1,0.5, 0.5, 1,0.5, 0.5, 1 };
-    spacingType->SetMetaDataObjectValue(directions);
+    //MetaDataDoubleArrayType::Pointer spacingType = MetaDataDoubleArrayType::New();
+    //std::vector<double> directions = { 0.5, 0.5, 1,0.5, 0.5, 1,0.5, 0.5, 1 };
+    //spacingType->SetMetaDataObjectValue(directions);
     // directions
     using MatrixType = itk::Matrix<double, 3, 3>;
     typedef itk::MetaDataObject<MatrixType> MetaDataMatrixType;
-    MatrixType M;
-    M(0, 0) = 1.0;
-    M(0, 1) = 2.0;
-    M(0, 2) = 3.0;
-    M(1, 0) = 4.0;
-    M(1, 1) = 5.0;
-    M(1, 2) = 6.0;
-    M(2, 0) = 7.0;
-    M(2, 1) = 8.0;
-    M(2, 2) = 9.0;
-    MetaDataMatrixType::Pointer directionsType = MetaDataMatrixType::New();
-    directionsType->SetMetaDataObjectValue(M);
+    //MatrixType M;
+    //M(0, 0) = 1.0;
+    //M(0, 1) = 2.0;
+    //M(0, 2) = 3.0;
+    //M(1, 0) = 4.0;
+    //M(1, 1) = 5.0;
+    //M(1, 2) = 6.0;
+    //M(2, 0) = 7.0;
+    //M(2, 1) = 8.0;
+    //M(2, 2) = 9.0;
+    //MetaDataMatrixType::Pointer directionsType = MetaDataMatrixType::New();
+    //directionsType->SetMetaDataObjectValue(M);
 
 
     ReaderType::Pointer reader = ReaderType::New();
@@ -520,6 +526,32 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
     reader->SetFileName(srcFile);
     reader->Update();
 
+    itk::Image<float, 3>::Pointer itkImgPtr = reader->GetOutput();
+    using MatrixType = itk::Matrix<double, 3, 3>;
+    MatrixType directionMat = itkImgPtr->GetDirection();
+
+    const itk::Vector<double, 3U>& spacingArr = itkImgPtr->GetSpacing();
+    MatrixType invertedMatrix = itkImgPtr->GetInverseDirection();
+    MatrixType tempMatrix;
+    tempMatrix(0, 0) = spacingArr[0];
+    tempMatrix(0, 1) = 0.0f;
+    tempMatrix(0, 2) = 0.0f;
+    tempMatrix(1, 0) = 0.0f;
+    tempMatrix(1, 1) = spacingArr[1];
+    tempMatrix(1, 2) = 0.0f;
+    tempMatrix(2, 0) = 0.0f;
+    tempMatrix(2, 1) = 0.0f;
+    tempMatrix(2, 2) = spacingArr[2];
+
+    MatrixType finalSpaceDirection = invertedMatrix * tempMatrix;
+
+
+    ///////////////////////////////////////////////////
+    //  directionMat 和 ITK_original_directions的值是一致的////
+    ////////////////////////////////////////////////////
+
+    ImageType::RegionType region = itkImgPtr->GetLargestPossibleRegion();
+    ImageType::SizeType size = region.GetSize();
 
     using Dictionary = itk::MetaDataDictionary;
     using MetaDataStringType = itk::MetaDataObject<std::string>;
@@ -552,9 +584,9 @@ void addMetaTagsToNRRDFile(std::string srcFile, std::string outFile)
 
         dic.Set("NRRD_space", meta);
         //dic.Set("registration type", registrationType);
-        dic.Set("ITK_original_spacing", spacingType);
+        //dic.Set("ITK_original_spacing", spacingType);
 
-        dic.Set("ITK_original_direction", directionsType);
+        //dic.Set("ITK_original_direction", directionsType);
         MetaDataDoubleArrayType::ConstPointer directionsValue2 =
             dynamic_cast<const MetaDataDoubleArrayType*> (tagItr->second.GetPointer());
         if (directionsValue2)
